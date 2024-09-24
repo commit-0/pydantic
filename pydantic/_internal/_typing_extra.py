@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Any, Final
 
 from typing_extensions import Annotated, Literal, TypeAliasType, TypeGuard, Unpack, deprecated, get_args, get_origin
 
+from ._namespace_utils import LocalsNamespace, ns_from
+
 if TYPE_CHECKING:
     from ._dataclasses import StandardDataclass
 
@@ -239,7 +241,7 @@ def merge_cls_and_parent_ns(cls: type[Any], parent_namespace: dict[str, Any] | N
     return ns
 
 
-def get_cls_type_hints_lenient(obj: Any, globalns: dict[str, Any] | None = None) -> dict[str, Any]:
+def get_cls_type_hints_lenient(obj: Any, parent_namespace: LocalsNamespace | None = None) -> dict[str, Any]:
     """Collect annotations from a class, including those from parent classes.
 
     Unlike `typing.get_type_hints`, this function will not error if a forward reference is not resolvable.
@@ -247,14 +249,19 @@ def get_cls_type_hints_lenient(obj: Any, globalns: dict[str, Any] | None = None)
     hints = {}
     for base in reversed(obj.__mro__):
         ann = base.__dict__.get('__annotations__')
-        localns = dict(vars(base))
+        # TODO: to be more correct, we might want to only pass `parent_namespace`
+        # when `base is obj`, because the other bases might be defined in a different
+        # context (i.e. not in the same frame):
+        globalns, localns = ns_from(base, parent_namespace=parent_namespace)
         if ann is not None and ann is not GetSetDescriptorType:
             for name, value in ann.items():
                 hints[name] = eval_type_lenient(value, globalns, localns)
     return hints
 
 
-def eval_type_lenient(value: Any, globalns: dict[str, Any] | None = None, localns: dict[str, Any] | None = None) -> Any:
+def eval_type_lenient(
+    value: Any, globalns: dict[str, Any] | None = None, localns: LocalsNamespace | None = None
+) -> Any:
     """Behaves like typing._eval_type, except it won't raise an error if a forward reference can't be resolved."""
     if value is None:
         value = NoneType
@@ -271,7 +278,7 @@ def eval_type_lenient(value: Any, globalns: dict[str, Any] | None = None, localn
 def eval_type_backport(
     value: Any,
     globalns: dict[str, Any] | None = None,
-    localns: dict[str, Any] | None = None,
+    localns: LocalsNamespace | None = None,
     type_params: tuple[Any] | None = None,
 ) -> Any:
     """An enhanced version of `typing._eval_type` which will fall back to using the `eval_type_backport`
@@ -304,7 +311,7 @@ def eval_type_backport(
 def _eval_type_backport(
     value: Any,
     globalns: dict[str, Any] | None = None,
-    localns: dict[str, Any] | None = None,
+    localns: LocalsNamespace | None = None,
     type_params: tuple[Any] | None = None,
 ) -> Any:
     try:
@@ -329,7 +336,7 @@ def _eval_type_backport(
 def _eval_type(
     value: Any,
     globalns: dict[str, Any] | None = None,
-    localns: dict[str, Any] | None = None,
+    localns: LocalsNamespace | None = None,
     type_params: tuple[Any] | None = None,
 ) -> Any:
     if sys.version_info >= (3, 13):

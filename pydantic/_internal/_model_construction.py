@@ -39,6 +39,7 @@ from ._typing_extra import (
 )
 from ._utils import ClassAttribute, SafeGetItemProxy
 from ._validate_call import ValidateCallWrapper
+from ._namespace_utils import LocalsNamespace, NamespacesTuple, ns_from
 
 if typing.TYPE_CHECKING:
     from ..fields import Field as PydanticModelField
@@ -213,12 +214,12 @@ class ModelMetaclass(ABCMeta):
 
             if __pydantic_reset_parent_namespace__:
                 cls.__pydantic_parent_namespace__ = build_lenient_weakvaluedict(parent_frame_namespace())
-            parent_namespace = getattr(cls, '__pydantic_parent_namespace__', None)
+            parent_namespace: dict[str, Any] | None = getattr(cls, '__pydantic_parent_namespace__', None)
             if isinstance(parent_namespace, dict):
                 parent_namespace = unpack_lenient_weakvaluedict(parent_namespace)
 
-            types_namespace = merge_cls_and_parent_ns(cls, parent_namespace)
-            set_model_fields(cls, bases, config_wrapper, types_namespace)
+            set_model_fields(cls, bases, config_wrapper, parent_namespace)
+            namespaces_tuple = ns_from(cls, parent_namespace=parent_namespace)
 
             if config_wrapper.frozen and '__hash__' not in namespace:
                 set_default_hash_func(cls, bases)
@@ -228,7 +229,7 @@ class ModelMetaclass(ABCMeta):
                 cls_name,
                 config_wrapper,
                 raise_errors=False,
-                types_namespace=types_namespace,
+                namespaces_tuple=namespaces_tuple,
                 create_model_module=_create_model_module,
             )
 
@@ -556,7 +557,10 @@ def make_hash_func(cls: type[BaseModel]) -> Any:
 
 
 def set_model_fields(
-    cls: type[BaseModel], bases: tuple[type[Any], ...], config_wrapper: ConfigWrapper, types_namespace: dict[str, Any]
+    cls: type[BaseModel],
+    bases: tuple[type[Any], ...],
+    config_wrapper: ConfigWrapper,
+    parent_namespace: LocalsNamespace | None,
 ) -> None:
     """Collect and set `cls.model_fields` and `cls.__class_vars__`.
 
@@ -564,10 +568,10 @@ def set_model_fields(
         cls: BaseModel or dataclass.
         bases: Parents of the class, generally `cls.__bases__`.
         config_wrapper: The config wrapper instance.
-        types_namespace: Optional extra namespace to look for types in.
+        parent_namespace: Optional extra namespace to look for types in.
     """
     typevars_map = get_model_typevars_map(cls)
-    fields, class_vars = collect_model_fields(cls, bases, config_wrapper, types_namespace, typevars_map=typevars_map)
+    fields, class_vars = collect_model_fields(cls, bases, config_wrapper, parent_namespace, typevars_map=typevars_map)
 
     cls.model_fields = fields
     cls.__class_vars__.update(class_vars)
@@ -591,7 +595,7 @@ def complete_model_class(
     config_wrapper: ConfigWrapper,
     *,
     raise_errors: bool = True,
-    types_namespace: dict[str, Any] | None,
+    namespaces_tuple: NamespacesTuple | None,
     create_model_module: str | None = None,
 ) -> bool:
     """Finish building a model class.
@@ -621,7 +625,7 @@ def complete_model_class(
     typevars_map = get_model_typevars_map(cls)
     gen_schema = GenerateSchema(
         config_wrapper,
-        types_namespace,
+        namespaces_tuple,
         typevars_map,
     )
 
