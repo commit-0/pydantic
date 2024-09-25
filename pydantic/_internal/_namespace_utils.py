@@ -3,12 +3,13 @@ from __future__ import annotations
 import sys
 from typing import Any, Iterator, TypeAlias, NamedTuple
 from functools import cached_property
+from contextlib import contextmanager
 
 from collections.abc import Mapping
 
 
 GlobalsNamespace: TypeAlias = dict[str, Any]
-LocalsNamespace: TypeAlias = Mapping[str, Any]
+MappingNamespace: TypeAlias = Mapping[str, Any]
 
 
 class NamespacesTuple(NamedTuple):
@@ -18,7 +19,7 @@ class NamespacesTuple(NamedTuple):
     In most cases, this is a reference to the module namespace.
     """
 
-    locals: LocalsNamespace
+    locals: MappingNamespace
     """
     The local namespace.
 
@@ -43,7 +44,7 @@ def get_module_ns_of(obj: Any) -> dict[str, Any]:
 
 
 class LazyLocalNamespace(Mapping[str, Any]):
-    def __init__(self, *namespaces: LocalsNamespace) -> None:
+    def __init__(self, *namespaces: MappingNamespace) -> None:
         self._namespaces = namespaces
 
     @cached_property
@@ -63,9 +64,9 @@ class LazyLocalNamespace(Mapping[str, Any]):
         return iter(self.data)
 
 
-def ns_from(obj: Any, parent_namespace: LocalsNamespace | None = None) -> NamespacesTuple:
+def ns_from(obj: Any, parent_namespace: MappingNamespace | None = None) -> NamespacesTuple:
     if isinstance(obj, type):
-        locals_list: list[LocalsNamespace] = []
+        locals_list: list[MappingNamespace] = []
 
         if parent_namespace is not None:
             locals_list.append(parent_namespace)
@@ -82,3 +83,46 @@ def ns_from(obj: Any, parent_namespace: LocalsNamespace | None = None) -> Namesp
     else:
         # TBD
         return NamespacesTuple({}, LazyLocalNamespace())
+
+
+class NsResolver:
+    def __init__(
+        self,
+        namespaces_tuple: NamespacesTuple | None = None,
+        fallback_namespace: MappingNamespace | None = None,
+        override_namespace: MappingNamespace | None = None,
+    ) -> None:
+        self._base_ns_tuple = namespaces_tuple or NamespacesTuple({}, {})
+        self._fallback_ns = fallback_namespace
+        self._override_ns = override_namespace
+        self._types_stack: list[type[Any]] = []
+
+    @cached_property
+    def eval_namespaces(self) -> NamespacesTuple:
+        if not self._types_stack:
+            return self._base_ns_tuple
+
+        typ = self._types_stack[-1]
+
+        globals_ns = get_module_ns_of(typ)
+        if self._fallback_ns is not None:  # TODO check len(self._types_stack) == 1?
+            globals_ns = {**self._fallback_ns, **globals_ns}
+
+        locals_list: list[MappingNamespace] = [
+            vars(typ),
+            {typ.__name__: typ}
+        ]
+        if self._override_ns is not None:
+            locals_list.append(self._override_ns)
+
+        return NamespacesTuple(globals_ns, LazyLocalNamespace(*locals_list))
+
+    @contextmanager
+    def push(self, typ: type[Any]):
+        self._types_stack.append(typ)
+        del self.eval_namespaces
+        try:
+            yield
+        finally:
+            self._types_stack.pop()
+            del self.eval_namespaces

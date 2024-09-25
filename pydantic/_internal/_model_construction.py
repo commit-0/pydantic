@@ -39,7 +39,7 @@ from ._typing_extra import (
 )
 from ._utils import ClassAttribute, SafeGetItemProxy
 from ._validate_call import ValidateCallWrapper
-from ._namespace_utils import LocalsNamespace, NamespacesTuple, ns_from
+from ._namespace_utils import MappingNamespace, NamespacesTuple, ns_from
 
 if typing.TYPE_CHECKING:
     from ..fields import Field as PydanticModelField
@@ -560,7 +560,7 @@ def set_model_fields(
     cls: type[BaseModel],
     bases: tuple[type[Any], ...],
     config_wrapper: ConfigWrapper,
-    parent_namespace: LocalsNamespace | None,
+    parent_namespace: MappingNamespace | None,
 ) -> None:
     """Collect and set `cls.model_fields` and `cls.__class_vars__`.
 

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from typing_extensions import Annotated, Literal, TypeAliasType, TypeGuard, Unpack, deprecated, get_args, get_origin
 
-from ._namespace_utils import LocalsNamespace, ns_from
+from ._namespace_utils import MappingNamespace, ns_from
 
 if TYPE_CHECKING:
     from ._dataclasses import StandardDataclass
@@ -241,7 +241,7 @@ def merge_cls_and_parent_ns(cls: type[Any], parent_namespace: dict[str, Any] | N
     return ns
 
 
-def get_cls_type_hints_lenient(obj: Any, parent_namespace: LocalsNamespace | None = None) -> dict[str, Any]:
+def get_cls_type_hints_lenient(obj: Any, parent_namespace: MappingNamespace | None = None) -> dict[str, Any]:
     """Collect annotations from a class, including those from parent classes.
 
     Unlike `typing.get_type_hints`, this function will not error if a forward reference is not resolvable.
@@ -260,7 +260,7 @@ def get_cls_type_hints_lenient(obj: Any, parent_namespace: LocalsNamespace | Non
 
 
 def eval_type_lenient(
-    value: Any, globalns: dict[str, Any] | None = None, localns: LocalsNamespace | None = None
+    value: Any, globalns: dict[str, Any] | None = None, localns: MappingNamespace | None = None
 ) -> Any:
     """Behaves like typing._eval_type, except it won't raise an error if a forward reference can't be resolved."""
     if value is None:
@@ -278,7 +278,7 @@ def eval_type_lenient(
 def eval_type_backport(
     value: Any,
     globalns: dict[str, Any] | None = None,
-    localns: LocalsNamespace | None = None,
+    localns: MappingNamespace | None = None,
     type_params: tuple[Any] | None = None,
 ) -> Any:
     """An enhanced version of `typing._eval_type` which will fall back to using the `eval_type_backport`
@@ -311,7 +311,7 @@ def eval_type_backport(
 def _eval_type_backport(
     value: Any,
     globalns: dict[str, Any] | None = None,
-    localns: LocalsNamespace | None = None,
+    localns: MappingNamespace | None = None,
     type_params: tuple[Any] | None = None,
 ) -> Any:
     try:
@@ -336,7 +336,7 @@ def _eval_type_backport(
 def _eval_type(
     value: Any,
     globalns: dict[str, Any] | None = None,
-    localns: LocalsNamespace | None = None,
+    localns: MappingNamespace | None = None,
     type_params: tuple[Any] | None = None,
 ) -> Any:
     if sys.version_info >= (3, 13):

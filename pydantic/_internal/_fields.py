@@ -19,7 +19,7 @@ from ._docs_extraction import extract_docstrings_from_cls
 from ._import_utils import import_cached_base_model, import_cached_field_info
 from ._repr import Representation
 from ._typing_extra import get_cls_type_hints_lenient, is_classvar, is_finalvar
-from ._namespace_utils import LocalsNamespace
+from ._namespace_utils import MappingNamespace
 
 if TYPE_CHECKING:
     from annotated_types import BaseMetadata
@@ -74,7 +74,7 @@ def collect_model_fields(  # noqa: C901
     cls: type[BaseModel],
     bases: tuple[type[Any], ...],
     config_wrapper: ConfigWrapper,
-    parent_namespace: LocalsNamespace | None,
+    parent_namespace: MappingNamespace | None,
     *,
     typevars_map: dict[Any, Any] | None = None,
 ) -> tuple[dict[str, FieldInfo], set[str]]:

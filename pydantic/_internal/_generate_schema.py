@@ -100,7 +100,7 @@ from ._mock_val_ser import MockCoreSchema
 from ._schema_generation_shared import CallbackGetCoreSchemaHandler
 from ._typing_extra import get_cls_type_hints_lenient, is_annotated, is_finalvar, is_self_type, is_zoneinfo_type
 from ._utils import lenient_issubclass, smart_deepcopy
-from ._namespace_utils import NamespacesTuple, ns_from
+from ._namespace_utils import NamespacesTuple, ns_from, NsResolver
 
 if TYPE_CHECKING:
     from ..fields import ComputedFieldInfo, FieldInfo
@@ -375,6 +375,7 @@ class GenerateSchema:
         # we need a stack for recursing into nested models
         self._config_wrapper_stack = ConfigWrapperStack(config_wrapper)
         self._types_namespace_stack = TypesNamespaceStack(namespaces_tuple or NamespacesTuple({}, {}))
+        self._ns_resolver = NsResolver(namespaces_tuple)
         self._typevars_map = typevars_map
         self.field_name_stack = _FieldNameStack()
         self.model_type_stack = _ModelTypeStack()
@@ -394,7 +395,7 @@ class GenerateSchema:
 
     @property
     def _types_namespace(self) -> NamespacesTuple:
-        return self._types_namespace_stack.tail
+        return self._ns_resolver.eval_namespaces
 
     @property
     def _arbitrary_types(self) -> bool:
@@ -682,7 +683,7 @@ class GenerateSchema:
 
             model_validators = decorators.model_validators.values()
 
-            with self._config_wrapper_stack.push(config_wrapper), self._types_namespace_stack.push(cls):
+            with self._config_wrapper_stack.push(config_wrapper), self._ns_resolver.push(cls):
                 extras_schema = None
                 if core_config.get('extra_fields_behavior') == 'allow':
                     assert cls.__mro__[0] is cls
