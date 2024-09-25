@@ -323,28 +323,6 @@ def _add_custom_serialization_from_json_encoders(
     return schema
 
 
-TypesNamespace = Union[Dict[str, Any], None]
-
-
-class TypesNamespaceStack:
-    """A stack of types namespaces."""
-
-    def __init__(self, namespace_tuple: NamespacesTuple):
-        self._types_namespace_stack: list[NamespacesTuple] = [namespace_tuple]
-
-    @property
-    def tail(self) -> NamespacesTuple:
-        return self._types_namespace_stack[-1]
-
-    @contextmanager
-    def push(self, for_type: type[Any]):
-        self._types_namespace_stack.append(ns_from(for_type))
-        try:
-            yield
-        finally:
-            self._types_namespace_stack.pop()
-
-
 def _get_first_non_null(a: Any, b: Any) -> Any:
     """Return the first argument if it is not None, otherwise return the second argument.
 
@@ -359,7 +337,7 @@ class GenerateSchema:
 
     __slots__ = (
         '_config_wrapper_stack',
-        '_types_namespace_stack',
+        '_ns_resolver',
         '_typevars_map',
         'field_name_stack',
         'model_type_stack',
@@ -374,7 +352,6 @@ class GenerateSchema:
     ) -> None:
         # we need a stack for recursing into nested models
         self._config_wrapper_stack = ConfigWrapperStack(config_wrapper)
-        self._types_namespace_stack = TypesNamespaceStack(namespaces_tuple or NamespacesTuple({}, {}))
         self._ns_resolver = NsResolver(namespaces_tuple)
         self._typevars_map = typevars_map
         self.field_name_stack = _FieldNameStack()
@@ -395,7 +372,7 @@ class GenerateSchema:
 
     @property
     def _types_namespace(self) -> NamespacesTuple:
-        return self._ns_resolver.eval_namespaces
+        return self._ns_resolver.types_namespace
 
     @property
     def _arbitrary_types(self) -> bool:

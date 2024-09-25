@@ -219,7 +219,6 @@ class ModelMetaclass(ABCMeta):
                 parent_namespace = unpack_lenient_weakvaluedict(parent_namespace)
 
             set_model_fields(cls, bases, config_wrapper, parent_namespace)
-            namespaces_tuple = ns_from(cls, parent_namespace=parent_namespace)
 
             if config_wrapper.frozen and '__hash__' not in namespace:
                 set_default_hash_func(cls, bases)
@@ -229,7 +228,6 @@ class ModelMetaclass(ABCMeta):
                 cls_name,
                 config_wrapper,
                 raise_errors=False,
-                namespaces_tuple=namespaces_tuple,
                 create_model_module=_create_model_module,
             )
 
@@ -595,7 +593,7 @@ def complete_model_class(
     config_wrapper: ConfigWrapper,
     *,
     raise_errors: bool = True,
-    namespaces_tuple: NamespacesTuple | None,
+    namespaces_tuple: NamespacesTuple | None = None,
     create_model_module: str | None = None,
 ) -> bool:
     """Finish building a model class.

@@ -98,7 +98,7 @@ class NsResolver:
         self._types_stack: list[type[Any]] = []
 
     @cached_property
-    def eval_namespaces(self) -> NamespacesTuple:
+    def types_namespace(self) -> NamespacesTuple:
         if not self._types_stack:
             return self._base_ns_tuple
 
@@ -120,9 +120,9 @@ class NsResolver:
     @contextmanager
     def push(self, typ: type[Any]):
         self._types_stack.append(typ)
-        del self.eval_namespaces
+        del self.types_namespace
         try:
             yield
         finally:
             self._types_stack.pop()
-            del self.eval_namespaces
+            del self.types_namespace
