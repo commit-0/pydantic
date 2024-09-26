@@ -104,9 +104,9 @@ class NsResolver:
 
         typ = self._types_stack[-1]
 
-        globals_ns = get_module_ns_of(typ)
+        globalns = get_module_ns_of(typ)
         if self._fallback_ns is not None:  # TODO check len(self._types_stack) == 1?
-            globals_ns = {**self._fallback_ns, **globals_ns}
+            globalns = {**self._fallback_ns, **globalns}
 
         locals_list: list[MappingNamespace] = [
             vars(typ),
@@ -115,7 +115,7 @@ class NsResolver:
         if self._override_ns is not None:
             locals_list.append(self._override_ns)
 
-        return NamespacesTuple(globals_ns, LazyLocalNamespace(*locals_list))
+        return NamespacesTuple(globalns, LazyLocalNamespace(*locals_list))
 
     @contextmanager
     def push(self, typ: type[Any]):

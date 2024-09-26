@@ -26,13 +26,16 @@ from ._generics import get_standard_typevars_map
 from ._mock_val_ser import set_dataclass_mocks
 from ._schema_generation_shared import CallbackGetCoreSchemaHandler
 from ._signature import generate_pydantic_signature
+from ._namespace_utils import MappingNamespace
 
 if typing.TYPE_CHECKING:
+    from dataclasses import Field
+
     from ..config import ConfigDict
     from ..fields import FieldInfo
 
     class StandardDataclass(typing.Protocol):
-        __dataclass_fields__: ClassVar[dict[str, Any]]
+        __dataclass_fields__: ClassVar[dict[str, Field[Any]]]
         __dataclass_params__: ClassVar[Any]  # in reality `dataclasses._DataclassParams`
         __post_init__: ClassVar[Callable[..., None]]
 
@@ -68,7 +71,7 @@ else:
 
 def set_dataclass_fields(
     cls: type[StandardDataclass],
-    types_namespace: dict[str, Any] | None = None,
+    parent_namespace: MappingNamespace | None = None,
     config_wrapper: _config.ConfigWrapper | None = None,
 ) -> None:
     """Collect and set `cls.__pydantic_fields__`.
@@ -79,7 +82,7 @@ def set_dataclass_fields(
         config_wrapper: The config wrapper instance, defaults to `None`.
     """
     typevars_map = get_standard_typevars_map(cls)
-    fields = collect_dataclass_fields(cls, types_namespace, typevars_map=typevars_map, config_wrapper=config_wrapper)
+    fields = collect_dataclass_fields(cls, parent_namespace, typevars_map=typevars_map, config_wrapper=config_wrapper)
 
     cls.__pydantic_fields__ = fields  # type: ignore
 
@@ -143,8 +146,7 @@ def complete_dataclass(
     typevars_map = get_standard_typevars_map(cls)
     gen_schema = GenerateSchema(
         config_wrapper,
-        types_namespace,
-        typevars_map,
+        typevars_map=typevars_map,
     )
 
     # This needs to be called before we change the __init__

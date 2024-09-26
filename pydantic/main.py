@@ -43,6 +43,7 @@ from ._internal import (
     _typing_extra,
     _utils,
 )
+from ._internal._namespace_utils import MappingNamespace
 from ._migration import getattr_migration
 from .aliases import AliasChoices, AliasPath
 from .annotated_handlers import GetCoreSchemaHandler, GetJsonSchemaHandler
@@ -517,7 +518,7 @@ class BaseModel(metaclass=_model_construction.ModelMetaclass):
         force: bool = False,
         raise_errors: bool = True,
         _parent_namespace_depth: int = 2,
-        _types_namespace: dict[str, Any] | None = None,
+        _types_namespace: MappingNamespace | None = None,
     ) -> bool | None:
         """Try to rebuild the pydantic-core schema for the model.
 
@@ -540,8 +541,10 @@ class BaseModel(metaclass=_model_construction.ModelMetaclass):
             if '__pydantic_core_schema__' in cls.__dict__:
                 delattr(cls, '__pydantic_core_schema__')  # delete cached value to ensure full rebuild happens
             if _types_namespace is not None:
-                types_namespace: dict[str, Any] | None = _types_namespace.copy()
+                override_namespace = _types_namespace
+                fallback_namespace = None
             else:
+                override_namespace = None
                 if _parent_namespace_depth > 0:
                     frame_parent_ns = (
                         _typing_extra.parent_frame_namespace(parent_depth=_parent_namespace_depth, force=True) or {}
