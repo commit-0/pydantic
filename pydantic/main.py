@@ -43,7 +43,7 @@ from ._internal import (
     _typing_extra,
     _utils,
 )
-from ._internal._namespace_utils import MappingNamespace
+from ._internal._namespace_utils import MappingNamespace, NsResolver
 from ._migration import getattr_migration
 from .aliases import AliasChoices, AliasPath
 from .annotated_handlers import GetCoreSchemaHandler, GetJsonSchemaHandler
@@ -537,39 +537,32 @@ class BaseModel(metaclass=_model_construction.ModelMetaclass):
         """
         if not force and cls.__pydantic_complete__:
             return None
-        else:
-            if '__pydantic_core_schema__' in cls.__dict__:
-                delattr(cls, '__pydantic_core_schema__')  # delete cached value to ensure full rebuild happens
-            if _types_namespace is not None:
-                override_namespace = _types_namespace
-                fallback_namespace = None
-            else:
-                override_namespace = None
-                if _parent_namespace_depth > 0:
-                    frame_parent_ns = (
-                        _typing_extra.parent_frame_namespace(parent_depth=_parent_namespace_depth, force=True) or {}
-                    )
-                    cls_parent_ns = (
-                        _model_construction.unpack_lenient_weakvaluedict(cls.__pydantic_parent_namespace__) or {}
-                    )
-                    types_namespace = {**cls_parent_ns, **frame_parent_ns}
-                    cls.__pydantic_parent_namespace__ = _model_construction.build_lenient_weakvaluedict(types_namespace)
-                else:
-                    types_namespace = _model_construction.unpack_lenient_weakvaluedict(
-                        cls.__pydantic_parent_namespace__
-                    )
 
-                types_namespace = _typing_extra.merge_cls_and_parent_ns(cls, types_namespace)
+        if '__pydantic_core_schema__' in cls.__dict__:
+            delattr(cls, '__pydantic_core_schema__')  # delete cached value to ensure full rebuild happens
 
-            # manually override defer_build so complete_model_class doesn't skip building the model again
-            config = {**cls.model_config, 'defer_build': False}
-            return _model_construction.complete_model_class(
-                cls,
-                cls.__name__,
-                _config.ConfigWrapper(config, check=False),
-                raise_errors=raise_errors,
-                types_namespace=types_namespace,
-            )
+        fallback_namespace: MappingNamespace | None = None
+        override_namespace: MappingNamespace | None = None
+
+        if _types_namespace is not None:
+            override_namespace = _types_namespace
+        elif _parent_namespace_depth > 0:
+            fallback_namespace = _typing_extra.parent_frame_namespace(parent_depth=_parent_namespace_depth, force=True) or {}
+
+        ns_resolver = NsResolver(
+            fallback_namespace=fallback_namespace,
+            override_namespace=override_namespace
+        )
+
+        # manually override defer_build so complete_model_class doesn't skip building the model again
+        config = {**cls.model_config, 'defer_build': False}
+        return _model_construction.complete_model_class(
+            cls,
+            cls.__name__,
+            _config.ConfigWrapper(config, check=False),
+            raise_errors=raise_errors,
+            ns_resolver=ns_resolver,
+        )
 
     @classmethod
     def model_validate(

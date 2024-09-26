@@ -9,22 +9,27 @@ from collections.abc import Mapping
 
 
 GlobalsNamespace: TypeAlias = dict[str, Any]
-MappingNamespace: TypeAlias = Mapping[str, Any]
+"""A global namespace.
 
+In most cases, this is a reference to the `__dict__` attribute of a module.
+Such a namespace type is expected as the `globals` argument during type annotation evaluation.
+"""
+
+MappingNamespace: TypeAlias = Mapping[str, Any]
+"""Any kind of namespace.
+
+In most cases, this is a local namespace (e.g. the `__dict__` attribute of a class,
+the [`f_locals`][frame.f_locals] attribute of a frame object).
+Such a namespace type is expected as the `locals` argument during type annotation evaluation.
+"""
 
 class NamespacesTuple(NamedTuple):
     globals: GlobalsNamespace
-    """The global namespace.
-
-    In most cases, this is a reference to the module namespace.
-    """
+    """The namespace to be used as the `globals` argument during type annotation evaluation."""
 
     locals: MappingNamespace
-    """
-    The local namespace.
+    """The namespace to be used as the `locals` argument during type annotation evaluation."""
 
-    This can be any mapping.
-    """
 
 
 def get_module_ns_of(obj: Any) -> dict[str, Any]:
@@ -44,6 +49,25 @@ def get_module_ns_of(obj: Any) -> dict[str, Any]:
 
 
 class LazyLocalNamespace(Mapping[str, Any]):
+    """A lazily evaluated mapping, to be used as the `locals` argument during type annotation evaluation.
+
+    While the [`eval`][eval] function expects a mapping as the `locals` argument, it only
+    performs `__getitem__` calls. The [`Mapping`][collections.abc.Mapping] abstract base class
+    is fully implemented only for type checking purposes.
+
+    Args:
+         *namespaces: The namespaces to consider, in ascending order of priority.
+
+    Example:
+        ```python
+        ns = LazyLocalNamespace({'a': 1, 'b': 2}, {'a': 3})
+        ns['a']
+        #> 3
+        ns['b']
+        #> 2
+        ```
+    """
+
     def __init__(self, *namespaces: MappingNamespace) -> None:
         self._namespaces = namespaces
 
@@ -86,6 +110,50 @@ def ns_from(obj: Any, parent_namespace: MappingNamespace | None = None) -> Names
 
 
 class NsResolver:
+    """A class holding the logic to resolve namespaces for type evaluation in the context
+    of core schema generation.
+
+    This class handles the namespace logic when evaluating annotations that failed to
+    resolve during the initial inspection/building of the Pydantic model, dataclass, etc.
+
+    It holds a stack of classes that are being inspected during the core schema building,
+    and the `types_namespace` property exposes the globals and locals to be used for
+    type annotation evaluation. Additionally -- if no class is present in the stack -- a
+    fallback globals and locals can be provided with the `namespaces_tuple` argument.
+
+    This is only meant to be used alongside with the `GenerateSchema` class.
+
+    Args:
+        namespaces_tuple: The default globals and locals to used if no class is present
+            on the stack. This can be useful when using the `GenerateSchema` class
+            with `TypeAdapter`, where the "type" being analyzed is a simple annotation.
+        fallback_namespace: A namespace to use as a last resort if a name wasn't found
+            in the locals nor the globals. This is mainly used when rebuilding a core
+            schema for a Pydantic model or dataclass, where the parent namespace is used.
+        override_namespace: A namespace to use first when resolving forward annotations.
+            This is mainly used when rebuilding a core schema for a Pydantic model or
+            dataclass, where an explicit namespace can be provided to resolve annotations
+            that failed to resolve during the initial schema building.
+
+    Example:
+        ```python
+        ns_resolver = NsResolver(
+            namespaces_tuple=NamespacesTuple({'my_global': 1}, {}),
+            fallback_namespace={'fallback': 2, 'my_global': 3},
+        )
+
+        ns_resolver.types_namespace
+        #> NamespacesTuple({'my_global': 1}, {})
+
+        class MyType:
+            some_local = 4
+
+        with ns_resolver.push(MyType):
+            ns_resolver.types_namespace
+            #> NamespacesTuple({'my_global': 1, 'fallback': 2}, {'some_local': 4})
+        ```
+    """
+
     def __init__(
         self,
         namespaces_tuple: NamespacesTuple | None = None,
@@ -100,12 +168,15 @@ class NsResolver:
     @cached_property
     def types_namespace(self) -> NamespacesTuple:
         if not self._types_stack:
+            # TODO do we want to merge fallback and override ns here?
             return self._base_ns_tuple
 
         typ = self._types_stack[-1]
 
         globalns = get_module_ns_of(typ)
-        if self._fallback_ns is not None:  # TODO check len(self._types_stack) == 1?
+        # TODO check len(self._types_stack) == 1? As we specified,
+        # fallback_namespace should only be used for the class being rebuilt.
+        if self._fallback_ns is not None:
             globalns = {**self._fallback_ns, **globalns}
 
         locals_list: list[MappingNamespace] = [
@@ -120,9 +191,9 @@ class NsResolver:
     @contextmanager
     def push(self, typ: type[Any]):
         self._types_stack.append(typ)
-        del self.types_namespace
+        self.__dict__.pop('types_namespace', None)
         try:
             yield
         finally:
             self._types_stack.pop()
-            del self.types_namespace
+            self.__dict__.pop('types_namespace', None)

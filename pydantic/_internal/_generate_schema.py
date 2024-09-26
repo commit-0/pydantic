@@ -347,12 +347,12 @@ class GenerateSchema:
     def __init__(
         self,
         config_wrapper: ConfigWrapper,
-        namespaces_tuple: NamespacesTuple | None = None,
+        ns_resolver: NsResolver | None = None,
         typevars_map: dict[Any, Any] | None = None,
     ) -> None:
         # we need a stack for recursing into nested models
         self._config_wrapper_stack = ConfigWrapperStack(config_wrapper)
-        self._ns_resolver = NsResolver(namespaces_tuple)
+        self._ns_resolver = ns_resolver or NsResolver()
         self._typevars_map = typevars_map
         self.field_name_stack = _FieldNameStack()
         self.model_type_stack = _ModelTypeStack()
@@ -1387,7 +1387,7 @@ class GenerateSchema:
             annotation = origin.__value__
             typevars_map = get_standard_typevars_map(obj)
 
-            with self._types_namespace_stack.push(origin):
+            with self._ns_resolver.push(origin):
                 annotation = _typing_extra.eval_type_lenient(annotation, *self._types_namespace)
                 annotation = replace_types(annotation, typevars_map)
                 schema = self.generate_schema(annotation)
@@ -1427,7 +1427,7 @@ class GenerateSchema:
         """
         FieldInfo = import_cached_field_info()
 
-        with self.model_type_stack.push(typed_dict_cls), self.defs.get_schema_or_ref(typed_dict_cls) as (
+        with self._ns_resolver.push(typed_dict_cls), self.defs.get_schema_or_ref(typed_dict_cls) as (
             typed_dict_ref,
             maybe_schema,
         ):
@@ -1449,7 +1449,7 @@ class GenerateSchema:
             except AttributeError:
                 config = None
 
-            with self._config_wrapper_stack.push(config), self._types_namespace_stack.push(typed_dict_cls):
+            with self._config_wrapper_stack.push(config):
                 core_config = self._config_wrapper.core_config(typed_dict_cls)
 
                 required_keys: frozenset[str] = typed_dict_cls.__required_keys__
@@ -1525,7 +1525,7 @@ class GenerateSchema:
             if origin is not None:
                 namedtuple_cls = origin
 
-            with self._types_namespace_stack.push(namedtuple_cls):
+            with self._ns_resolver.push(namedtuple_cls):
                 annotations: dict[str, Any] = get_cls_type_hints_lenient(namedtuple_cls)
                 if not annotations:
                     # annotations is empty, happens if namedtuple_cls defined via collections.namedtuple(...)
@@ -1758,32 +1758,19 @@ class GenerateSchema:
             if origin is not None:
                 dataclass = origin
 
-            with ExitStack() as dataclass_bases_stack:
-                # Pushing a namespace prioritises items already in the stack, so iterate though the MRO forwards
-                for dataclass_base in dataclass.__mro__:
-                    if dataclasses.is_dataclass(dataclass_base):
-                        dataclass_bases_stack.enter_context(self._types_namespace_stack.push(dataclass_base))
+            config = getattr(dataclass, '__pydantic_config__', None)
 
-                # Pushing a config overwrites the previous config, so iterate though the MRO backwards
-                config = None
-                for dataclass_base in reversed(dataclass.__mro__):
-                    if dataclasses.is_dataclass(dataclass_base):
-                        config = getattr(dataclass_base, '__pydantic_config__', None)
-                        dataclass_bases_stack.enter_context(self._config_wrapper_stack.push(config))
+            from ..dataclasses import is_pydantic_dataclass
 
-                core_config = self._config_wrapper.core_config(dataclass)
-
-                from ..dataclasses import is_pydantic_dataclass
-
+            with self._ns_resolver.push(dataclass), self._config_wrapper_stack.push(config):
                 if is_pydantic_dataclass(dataclass):
                     fields = deepcopy(dataclass.__pydantic_fields__)
                     if typevars_map:
                         for field in fields.values():
-                            field.apply_typevars_map(typevars_map, self._types_namespace)
+                            field.apply_typevars_map(typevars_map, *self._types_namespace)
                 else:
                     fields = collect_dataclass_fields(
                         dataclass,
-                        self._types_namespace,
                         typevars_map=typevars_map,
                     )
 
@@ -1823,10 +1810,12 @@ class GenerateSchema:
                 model_validators = decorators.model_validators.values()
                 inner_schema = apply_model_validators(inner_schema, model_validators, 'inner')
 
-                title = self._get_model_title_from_config(dataclass, ConfigWrapper(config))
+                title = self._get_model_title_from_config(dataclass, self._config_wrapper)
                 metadata = build_metadata_dict(
                     js_functions=[partial(modify_model_json_schema, cls=dataclass, title=title)]
                 )
+
+                core_config = self._config_wrapper.core_config(dataclass)
 
                 dc_schema = core_schema.dataclass_schema(
                     dataclass,
@@ -1845,10 +1834,6 @@ class GenerateSchema:
                 schema = apply_model_validators(schema, model_validators, 'outer')
                 self.defs.definitions[dataclass_ref] = schema
                 return core_schema.definition_reference_schema(dataclass_ref)
-
-            # Type checkers seem to assume ExitStack may suppress exceptions and therefore
-            # control flow can exit the `with` block without returning.
-            assert False, 'Unreachable'
 
     def _callable_schema(self, function: Callable[..., Any]) -> core_schema.CallSchema:
         """Generate schema for a Callable.

@@ -39,7 +39,7 @@ from ._typing_extra import (
 )
 from ._utils import ClassAttribute, SafeGetItemProxy
 from ._validate_call import ValidateCallWrapper
-from ._namespace_utils import MappingNamespace, NamespacesTuple, ns_from
+from ._namespace_utils import MappingNamespace, NamespacesTuple, ns_from, NsResolver
 
 if typing.TYPE_CHECKING:
     from ..fields import Field as PydanticModelField
@@ -593,7 +593,7 @@ def complete_model_class(
     config_wrapper: ConfigWrapper,
     *,
     raise_errors: bool = True,
-    namespaces_tuple: NamespacesTuple | None = None,
+    ns_resolver: NsResolver | None = None,
     create_model_module: str | None = None,
 ) -> bool:
     """Finish building a model class.
@@ -623,7 +623,7 @@ def complete_model_class(
     typevars_map = get_model_typevars_map(cls)
     gen_schema = GenerateSchema(
         config_wrapper,
-        namespaces_tuple,
+        ns_resolver,
         typevars_map,
     )
 

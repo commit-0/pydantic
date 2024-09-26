@@ -258,8 +258,8 @@ def _is_finalvar_with_default_val(type_: type[Any], val: Any) -> bool:
 
 def collect_dataclass_fields(
     cls: type[StandardDataclass],
-    parent_namespace: MappingNamespace | None,
     *,
+    parent_namespace: MappingNamespace | None = None,
     typevars_map: dict[Any, Any] | None = None,
     config_wrapper: ConfigWrapper | None = None,
 ) -> dict[str, FieldInfo]:
