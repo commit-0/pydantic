@@ -24,6 +24,16 @@ Such a namespace type is expected as the `locals` argument during type annotatio
 """
 
 class NamespacesTuple(NamedTuple):
+    """A tuple of globals and locals to be used during type annotation evaluation.
+
+    This datastructure is defined as a named tuple so that it can easily be unpacked:
+
+    ```python
+    def eval_type(typ: type[Any], ns: NamespacesTuple) -> None:
+        return eval(typ, *ns)
+    ```
+    """
+
     globals: GlobalsNamespace
     """The namespace to be used as the `globals` argument during type annotation evaluation."""
 

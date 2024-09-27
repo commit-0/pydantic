@@ -1289,3 +1289,24 @@ def test_tmp_7(create_module):
         func_val = validate_call(func)
 
         func_val(a=1)
+
+
+@pytest.mark.xfail(reason='In GenerateSchema, only the current class module is taken into account')
+def test_tmp_9(create_module):
+    from pydantic import field_serializer  # or model_serializer
+
+    @create_module
+    def module_1():
+
+        MyStr = str
+        class Model(BaseModel):
+            a: int
+
+            @field_serializer('a')
+            def ser(self) -> 'MyStr':
+                return str(self.a)
+
+    class Sub(module_1.Model):
+        pass
+
+    Sub.model_rebuild()
