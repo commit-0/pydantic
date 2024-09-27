@@ -16,6 +16,7 @@ from ..errors import PydanticUserError
 from ._core_utils import get_type_ref
 from ._internal_dataclass import slots_true
 from ._typing_extra import get_function_type_hints
+from ._namespace_utils import MappingNamespace, GlobalsNamespace
 
 if TYPE_CHECKING:
     from ..fields import ComputedFieldInfo
@@ -752,7 +753,10 @@ def unwrap_wrapped_function(
 
 
 def get_function_return_type(
-    func: Any, explicit_return_type: Any, types_namespace: dict[str, Any] | None = None
+    func: Any,
+    explicit_return_type: Any,
+    globalns: GlobalsNamespace | None = None,
+    localns: MappingNamespace | None = None,
 ) -> Any:
     """Get the function return type.
 
@@ -770,7 +774,7 @@ def get_function_return_type(
     if explicit_return_type is PydanticUndefined:
         # try to get it from the type annotation
         hints = get_function_type_hints(
-            unwrap_wrapped_function(func), include_keys={'return'}, types_namespace=types_namespace
+            unwrap_wrapped_function(func), include_keys={'return'}, globalns=globalns, localns=localns,
         )
         return hints.get('return', PydanticUndefined)
     else:

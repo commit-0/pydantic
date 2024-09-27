@@ -8,6 +8,7 @@ from pydantic_core import core_schema
 
 if TYPE_CHECKING:
     from .json_schema import JsonSchemaMode, JsonSchemaValue
+    from ._internal._namespace_utils import NamespacesTuple
 
     CoreSchemaOrField = Union[
         core_schema.CoreSchema,
@@ -116,6 +117,6 @@ class GetCoreSchemaHandler:
         """Get the name of the closest field to this validator."""
         raise NotImplementedError
 
-    def _get_types_namespace(self) -> dict[str, Any] | None:
+    def _get_types_namespace(self) -> NamespacesTuple:
         """Internal method used during type resolution for serializer annotations."""
         raise NotImplementedError

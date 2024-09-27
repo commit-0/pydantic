@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from typing_extensions import Annotated, Literal, TypeAliasType, TypeGuard, Unpack, deprecated, get_args, get_origin
 
-from ._namespace_utils import MappingNamespace, ns_from
+from ._namespace_utils import MappingNamespace, GlobalsNamespace, ns_from
 
 if TYPE_CHECKING:
     from ._dataclasses import StandardDataclass
@@ -279,7 +279,7 @@ def eval_type_backport(
     value: Any,
     globalns: dict[str, Any] | None = None,
     localns: MappingNamespace | None = None,
-    type_params: tuple[Any] | None = None,
+    type_params: tuple[Any, ...] | None = None,
 ) -> Any:
     """An enhanced version of `typing._eval_type` which will fall back to using the `eval_type_backport`
     package if it's installed to let older Python versions use newer typing constructs.
@@ -312,7 +312,7 @@ def _eval_type_backport(
     value: Any,
     globalns: dict[str, Any] | None = None,
     localns: MappingNamespace | None = None,
-    type_params: tuple[Any] | None = None,
+    type_params: tuple[Any, ...] | None = None,
 ) -> Any:
     try:
         return _eval_type(value, globalns, localns, type_params)
@@ -337,7 +337,7 @@ def _eval_type(
     value: Any,
     globalns: dict[str, Any] | None = None,
     localns: MappingNamespace | None = None,
-    type_params: tuple[Any] | None = None,
+    type_params: tuple[Any, ...] | None = None,
 ) -> Any:
     if sys.version_info >= (3, 13):
         return typing._eval_type(  # type: ignore
@@ -361,11 +361,22 @@ def is_backport_fixable_error(e: TypeError) -> bool:
 
 
 def get_function_type_hints(
-    function: Callable[..., Any], *, include_keys: set[str] | None = None, types_namespace: dict[str, Any] | None = None
+    function: Callable[..., Any],
+    *,
+    include_keys: set[str] | None = None,
+    globalns: GlobalsNamespace | None = None,
+    localns: MappingNamespace | None = None,
 ) -> dict[str, Any]:
-    """Like `typing.get_type_hints`, but doesn't convert `X` to `Optional[X]` if the default value is `None`, also
-    copes with `partial`.
+    """Return type hints for a function.
+
+    This is similar to the `typing.get_type_hints` function, with a few differences:
+    - Support `functools.partial` by using the underlying `func` attribute.
+    - If `function` happens to be a built-in type (e.g. `int`), assume it doesn't have annotations
+      but specify the `return` key as being the actual type.
+    - Do not wrap type annotation of a parameter with `Optional` if it has a default value of `None`
+      (related bug: https://github.com/python/cpython/issues/90353, only fixed in 3.11+).
     """
+
     try:
         if isinstance(function, partial):
             annotations = function.func.__annotations__
@@ -380,9 +391,15 @@ def get_function_type_hints(
             type_hints.setdefault('return', function)
         return type_hints
 
-    globalns = get_module_ns_of(function)
+    if globalns is None:
+        globalns = get_module_ns_of(function)
+    type_params: tuple[Any, ...] | None = None
+    if localns is None:
+        # If localns was specified, it is assumed to already contain type params.
+        # This is because Pydantic has more advanced logic to do so (see `_namespace_utils.ns_from`).
+        type_params = getattr(function, '__type_params__', ())
+
     type_hints = {}
-    type_params: tuple[Any] = getattr(function, '__type_params__', ())  # type: ignore
     for name, value in annotations.items():
         if include_keys is not None and name not in include_keys:
             continue
@@ -391,7 +408,7 @@ def get_function_type_hints(
         elif isinstance(value, str):
             value = _make_forward_ref(value)
 
-        type_hints[name] = eval_type_backport(value, globalns, types_namespace, type_params)
+        type_hints[name] = eval_type_backport(value, globalns, localns, type_params)
 
     return type_hints
 

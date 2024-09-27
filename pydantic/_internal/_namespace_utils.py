@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from typing import Any, Iterator, TypeAlias, NamedTuple
+from typing import Any, Iterator, TypeAlias, NamedTuple, TypeVar
 from functools import cached_property
 from contextlib import contextmanager
 
@@ -99,25 +99,37 @@ class LazyLocalNamespace(Mapping[str, Any]):
 
 
 def ns_from(obj: Any, parent_namespace: MappingNamespace | None = None) -> NamespacesTuple:
+    locals_list: list[MappingNamespace] = []
+    if parent_namespace is not None:
+        locals_list.append(parent_namespace)
+
+    global_ns = get_module_ns_of(obj)
+
     if isinstance(obj, type):
-        locals_list: list[MappingNamespace] = []
-
-        if parent_namespace is not None:
-            locals_list.append(parent_namespace)
-
         locals_list.extend(
             [
                 vars(obj),
                 {obj.__name__: obj},
             ]
         )
-
-        return NamespacesTuple(get_module_ns_of(obj), LazyLocalNamespace(*locals_list))
-
     else:
-        # TBD
-        return NamespacesTuple({}, LazyLocalNamespace())
+        # For functions, get the `__type_params__` introduced by PEP 695.
+        # Note that the typing `_eval_type` function expects type params to be
+        # passed as a separate argument. However, internally, `_eval_type` calls
+        # `ForwardRef._evaluate` which will merge type params with the localns,
+        # essentially mimicing what we do here.
+        type_params: tuple[TypeVar, ...] = ()
+        if parent_namespace is not None:
+            # We also fetch type params from the parent namespace. If present, it probably
+            # means the function was defined in a class. This is to support the following:
+            # https://github.com/python/cpython/issues/124089.
+            type_params += parent_namespace.get('__type_params__', ())
+        type_params += getattr(obj, '__type_params__', ())
+        locals_list.append(
+            {t.__name__: t for t in type_params}
+        )
 
+    return NamespacesTuple(global_ns, LazyLocalNamespace(*locals_list))
 
 class NsResolver:
     """A class holding the logic to resolve namespaces for type evaluation in the context
